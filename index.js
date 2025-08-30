@@ -1,19 +1,12 @@
 import express from "express";
 import dotenv from "dotenv";
-dotenv.config();
 import cors from "cors";
 import multer from "multer";
 import { PDFDocument } from "pdf-lib";
-import { PDFImage } from "pdf-image";
-
-// word to pdf 
-import { exec } from "child_process";
-import os from "os";
-import path from "path";
-import fs from "fs";
 
 import { Document, Packer, Paragraph } from "docx";
 
+dotenv.config();
 const app = express();
 app.use(cors());
 
@@ -22,9 +15,10 @@ const upload = multer({
   limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
 });
 
-app.get("/",(req,res)=>{
-  res.send("Backend : Own Your Pdf")
-})
+// Health check
+app.get("/", (req, res) => {
+  res.send("✅ Backend: Own Your PDF (Vercel ready)");
+});
 
 // -------------------- MERGE PDFs --------------------
 app.post("/merge", upload.array("pdfs"), async (req, res) => {
@@ -108,34 +102,28 @@ app.post("/compress", upload.single("pdf"), async (req, res) => {
   }
 });
 
-// -------------------- PDF TO WORD (TEXT ONLY, NO pdf-parse) --------------------
+// -------------------- PDF TO WORD --------------------
 app.post("/pdf-to-word", upload.single("pdf"), async (req, res) => {
   try {
     if (!req.file || !req.file.buffer) {
       return res.status(400).send("❌ No PDF file uploaded");
     }
 
-    // Load the PDF
     const pdfDoc = await PDFDocument.load(req.file.buffer);
     let extractedText = "";
 
-    // Loop through all pages and extract text
     for (const page of pdfDoc.getPages()) {
-      // pdf-lib does not have direct text extraction,
-      // but we can attempt to get contentStream (basic text extraction)
       const { contents } = page.node;
       if (contents) {
-        const contentString = contents.toString(); // crude fallback
-        extractedText += contentString + "\n\n";
+        extractedText += contents.toString() + "\n\n";
       }
     }
 
     if (!extractedText.trim()) {
       extractedText =
-        "⚠️ Could not extract text from this PDF (maybe scanned or image-based).";
+        "⚠️ Could not extract text (maybe scanned or image-based).";
     }
 
-    // Create Word document
     const doc = new Document({
       sections: [
         {
@@ -148,7 +136,6 @@ app.post("/pdf-to-word", upload.single("pdf"), async (req, res) => {
 
     const buffer = await Packer.toBuffer(doc);
 
-    // Send Word file
     res.setHeader("Content-Disposition", "attachment; filename=converted.docx");
     res.setHeader(
       "Content-Type",
@@ -161,50 +148,10 @@ app.post("/pdf-to-word", upload.single("pdf"), async (req, res) => {
   }
 });
 
-// -------------------- WORD TO PDF --------------------
-app.post("/word-to-pdf", upload.single("word"), async (req, res) => {
-  try {
-    if (!req.file) return res.status(400).send("Word file is required");
+// ❌ Word to PDF won't work on Vercel (needs LibreOffice)
+// Keep it local or replace with API
 
-    // Temporary file paths
-    const tmpDir = os.tmpdir();
-    const inputPath = path.join(tmpDir, `word-${Date.now()}.docx`);
-    const outputPath = inputPath.replace(".docx", ".pdf");
+console.log("✅ Backend ready for Vercel");
 
-    // Write uploaded file buffer to temp .docx
-    fs.writeFileSync(inputPath, req.file.buffer);
-
-    // Run LibreOffice to convert
-    exec(
-      `soffice --headless --convert-to pdf --outdir ${tmpDir} ${inputPath}`,
-      (err) => {
-        if (err) {
-          console.error("Conversion error:", err);
-          fs.unlinkSync(inputPath);
-          return res.status(500).send("Conversion failed");
-        }
-
-        // Send PDF back
-        res.download(outputPath, "converted.pdf", (err) => {
-          try {
-            // Cleanup after response
-            if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
-            if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
-          } catch (e) {
-            console.error("Cleanup error:", e);
-          }
-        });
-      }
-    );
-  } catch (err) {
-    console.error("❌ Error converting Word to PDF:", err);
-    res.status(500).send("Error converting Word to PDF");
-  }
-});
-
-
-
-const PORT = process.env.PORT || 5000;
-
-console.log(`🚀 Server running at http://localhost:${PORT}`)
-
+// Export app for Vercel
+export default app;
