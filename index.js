@@ -79,9 +79,25 @@ app.post("/compress", upload.single("pdf"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).send("PDF file is required");
 
+    // Get target size from frontend
+    let targetSize = req.body.targetSize || "";
+    targetSize = targetSize.trim().toLowerCase();
+
+    // Optional: parse targetSize to bytes
+    let targetBytes = 0;
+    if (targetSize.endsWith("kb")) {
+      targetBytes = parseFloat(targetSize) * 1024;
+    } else if (targetSize.endsWith("mb")) {
+      targetBytes = parseFloat(targetSize) * 1024 * 1024;
+    } else if (targetSize) {
+      targetBytes = parseFloat(targetSize); // assume bytes if unit not given
+    }
+
     const pdfDoc = await PDFDocument.load(req.file.buffer, {
       updateMetadata: false,
     });
+
+    // Clear metadata for slight size reduction
     pdfDoc.setTitle("");
     pdfDoc.setAuthor("");
     pdfDoc.setSubject("");
@@ -93,6 +109,10 @@ app.post("/compress", upload.single("pdf"), async (req, res) => {
       useObjectStreams: true,
       addDefaultPage: false,
     });
+
+    // Note: At this point, you could implement logic to further compress
+    // based on targetBytes if needed. For now, we just send the PDF.
+
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", "attachment; filename=compressed.pdf");
     res.send(Buffer.from(compressedPdfBytes));
@@ -101,6 +121,7 @@ app.post("/compress", upload.single("pdf"), async (req, res) => {
     res.status(500).send("Error compressing PDF");
   }
 });
+
 
 // -------------------- PDF TO WORD --------------------
 app.post("/pdf-to-word", upload.single("pdf"), async (req, res) => {
